@@ -6,8 +6,8 @@ namespace Tempest\Http\Session\Managers;
 
 use Tempest\Clock\Clock;
 use Tempest\DateTime\FormatPattern;
+use Tempest\Http\Session\Config\DatabaseSessionConfig;
 use Tempest\Http\Session\Session;
-use Tempest\Http\Session\SessionConfig;
 use Tempest\Http\Session\SessionCreated;
 use Tempest\Http\Session\SessionDeleted;
 use Tempest\Http\Session\SessionId;
@@ -20,7 +20,7 @@ final readonly class DatabaseSessionManager implements SessionManager
 {
     public function __construct(
         private Clock $clock,
-        private SessionConfig $config,
+        private DatabaseSessionConfig $config,
     ) {}
 
     public function getOrCreate(SessionId $id): Session
@@ -95,19 +95,35 @@ final readonly class DatabaseSessionManager implements SessionManager
             ->now()
             ->minus($this->config->expiration);
 
-        $expiredSessions = query(DatabaseSession::class)
-            ->select()
-            ->where('last_active_at < ?', $expired->format(FormatPattern::SQL_DATE_TIME))
-            ->all();
+        // Expired sessions are removed in batches. A single statement would bind one parameter per
+        // session, which overruns the per-statement parameter limits of PostgreSQL and SQLite once
+        // a backlog builds up, and would hold locks on the table for the length of the whole delete.
+        do {
+            // Only the identifiers are needed, so the serialized session data is left unread.
+            $expiredSessions = query(DatabaseSession::class)
+                ->select('id')
+                ->where('last_active_at < ?', $expired->format(FormatPattern::SQL_DATE_TIME))
+                ->limit($this->config->cleanupBatchSize)
+                ->all();
 
-        foreach ($expiredSessions as $expiredSession) {
+            if ($expiredSessions === []) {
+                return;
+            }
+
+            $ids = array_map(
+                callback: static fn (DatabaseSession $session) => (string) $session->id,
+                array: $expiredSessions,
+            );
+
             query(DatabaseSession::class)
                 ->delete()
-                ->where('id', $expiredSession->id)
+                ->whereIn('id', $ids)
                 ->execute();
 
-            event(new SessionDeleted(new SessionId((string) $expiredSession->id)));
-        }
+            foreach ($ids as $id) {
+                event(new SessionDeleted(new SessionId($id)));
+            }
+        } while (count($expiredSessions) === $this->config->cleanupBatchSize);
     }
 
     private function load(SessionId $id): ?Session

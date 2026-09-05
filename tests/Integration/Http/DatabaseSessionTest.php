@@ -15,7 +15,6 @@ use Tempest\Http\Session\Installer\CreateSessionsTable;
 use Tempest\Http\Session\Managers\DatabaseSession;
 use Tempest\Http\Session\Managers\DatabaseSessionManager;
 use Tempest\Http\Session\Session;
-use Tempest\Http\Session\SessionConfig;
 use Tempest\Http\Session\SessionCreated;
 use Tempest\Http\Session\SessionDeleted;
 use Tempest\Http\Session\SessionId;
@@ -45,7 +44,7 @@ final class DatabaseSessionTest extends FrameworkIntegrationTestCase
 
         $this->container->singleton(SessionManager::class, fn () => new DatabaseSessionManager(
             $this->container->get(Clock::class),
-            $this->container->get(SessionConfig::class),
+            $this->container->get(DatabaseSessionConfig::class),
         ));
 
         $this->database->reset(migrate: false);
@@ -233,6 +232,68 @@ final class DatabaseSessionTest extends FrameworkIntegrationTestCase
             },
             count: 1,
         );
+    }
+
+    #[Test]
+    public function delete_expired_sessions_removes_more_sessions_than_fit_in_one_batch(): void
+    {
+        $this->eventBus->preventEventHandling();
+
+        $clock = $this->clock('2025-01-01 00:00:00');
+
+        $this->container->config(new DatabaseSessionConfig(
+            expiration: Duration::minutes(30),
+            cleanupBatchSize: 2,
+        ));
+
+        // One more than a single batch holds, so the cleanup has to loop.
+        $expiredCount = 5;
+
+        foreach (range(1, $expiredCount) as $_) {
+            $this->manager->save($this->manager->getOrCreate($this->createSessionId()));
+        }
+
+        $clock->plus(Duration::minutes(35));
+
+        $this->manager->deleteExpiredSessions();
+
+        $this->assertCount(0, query(DatabaseSession::class)->select()->all());
+
+        $this->eventBus->assertDispatched(event: SessionDeleted::class, count: $expiredCount);
+    }
+
+    #[Test]
+    public function delete_expired_sessions_removes_several_records_at_once(): void
+    {
+        $this->eventBus->preventEventHandling();
+
+        $clock = $this->clock('2025-01-01 00:00:00');
+
+        $this->container->config(new DatabaseSessionConfig(expiration: Duration::minutes(30)));
+
+        $expiredIds = [];
+
+        foreach (range(1, 3) as $_) {
+            $expiredId = $this->createSessionId();
+            $this->manager->save($this->manager->getOrCreate($expiredId));
+            $expiredIds[] = $expiredId;
+        }
+
+        $activeId = $this->createSessionId();
+        $active = $this->manager->getOrCreate($activeId);
+
+        $clock->plus(Duration::minutes(35));
+
+        $this->manager->save($active);
+        $this->manager->deleteExpiredSessions();
+
+        $this->assertSessionExistsInDatabase($activeId);
+
+        foreach ($expiredIds as $expiredId) {
+            $this->assertSessionNotExistsInDatabase($expiredId);
+        }
+
+        $this->eventBus->assertDispatched(event: SessionDeleted::class, count: 3);
     }
 
     private function assertSessionExistsInDatabase(SessionId $sessionId): void
