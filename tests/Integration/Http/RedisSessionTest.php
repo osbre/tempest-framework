@@ -196,50 +196,47 @@ final class RedisSessionTest extends FrameworkIntegrationTestCase
     }
 
     #[Test]
-    public function delete_expired_sessions_removes_old_records(): void
+    public function saving_a_session_sets_a_time_to_live_matching_the_expiration(): void
     {
         $this->eventBus->preventEventHandling();
-
-        $clock = $this->clock('2023-01-01 00:00:00');
 
         $this->container->config(new RedisSessionConfig(
             expiration: Duration::minutes(30),
             prefix: 'test_session:',
         ));
 
-        $activeSessionId = $this->createSessionId();
-        $active = $this->manager->getOrCreate($activeSessionId);
-        $active->set('status', 'active');
+        $sessionId = $this->createSessionId();
 
-        $this->manager->save($active);
+        $this->manager->save($this->manager->getOrCreate($sessionId));
 
-        $expiredSessionId = $this->createSessionId();
-        $expired = $this->manager->getOrCreate($expiredSessionId);
-        $expired->set('status', 'expired');
+        // Redis is what expires sessions, so the time-to-live is the actual mechanism under test.
+        $this->assertEqualsWithDelta(
+            expected: Duration::minutes(30)->getTotalSeconds(),
+            actual: $this->getSessionTimeToLive($sessionId),
+            delta: 5,
+        );
+    }
 
-        $this->manager->save($expired);
+    #[Test]
+    public function delete_expired_sessions_is_a_no_op(): void
+    {
+        $this->eventBus->preventEventHandling();
 
-        // expire the $expired one
-        $clock->plus(Duration::minutes(35));
+        $this->container->config(new RedisSessionConfig(
+            expiration: Duration::minutes(30),
+            prefix: 'test_session:',
+        ));
 
-        // keep the first one active
-        $this->manager->save($active);
+        $sessionId = $this->createSessionId();
 
-        $this->assertSessionExistsInRedis($activeSessionId);
-        $this->assertSessionExistsInRedis($expiredSessionId);
+        $this->manager->save($this->manager->getOrCreate($sessionId));
 
         $this->manager->deleteExpiredSessions();
 
-        $this->assertSessionExistsInRedis($activeSessionId);
-        $this->assertSessionNotExistsInRedis($expiredSessionId);
+        // Sessions are collected by Redis, never by a scan, so nothing is touched or dispatched.
+        $this->assertSessionExistsInRedis($sessionId);
 
-        $this->eventBus->assertDispatched(
-            event: SessionDeleted::class,
-            callback: function (SessionDeleted $event) use ($expiredSessionId): void {
-                $this->assertEquals($expiredSessionId, $event->id);
-            },
-            count: 1,
-        );
+        $this->eventBus->assertNotDispatched(SessionDeleted::class);
     }
 
     private function assertSessionExistsInRedis(SessionId $sessionId): void
@@ -274,6 +271,13 @@ final class RedisSessionTest extends FrameworkIntegrationTestCase
         $this->assertNotNull($session, "Session {$sessionId} should exist in Redis");
 
         return $session->lastActiveAt;
+    }
+
+    private function getSessionTimeToLive(SessionId $sessionId): int
+    {
+        return (int) $this->container
+            ->get(Redis::class)
+            ->command('TTL', sprintf('%s%s', 'test_session:', $sessionId));
     }
 
     private function getSessionFromRedis(SessionId $id): ?Session

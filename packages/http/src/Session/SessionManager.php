@@ -27,7 +27,10 @@ interface SessionManager
     public function isValid(Session $session): bool;
 
     /**
-     * Removes all expired sessions from the server.
+     * Removes all expired sessions from the server, dispatching {@see SessionDeleted} for each one.
+     *
+     * Drivers backed by a store that expires entries on its own may implement this as a no-op. In
+     * that case, {@see SessionDeleted} is only dispatched when a session is explicitly deleted.
      */
     public function deleteExpiredSessions(): void;
 }

@@ -12,7 +12,6 @@ use Tempest\Http\Session\SessionDeleted;
 use Tempest\Http\Session\SessionId;
 use Tempest\Http\Session\SessionManager;
 use Tempest\KeyValue\Redis\Redis;
-use Tempest\Support\Str;
 use Throwable;
 
 use function Tempest\EventBus\event;
@@ -68,30 +67,15 @@ final readonly class RedisSessionManager implements SessionManager
         );
     }
 
-    public function deleteExpiredSessions(): void
-    {
-        $cursor = '0';
-
-        do {
-            /** @var array<int,string> $keys */
-            [$cursor, $keys] = $this->redis->command('SCAN', $cursor, 'MATCH', "{$this->config->prefix}*", 'COUNT', '100');
-
-            foreach ($keys as $key) {
-                $sessionId = $this->getSessionIdFromKey($key);
-                $session = $this->load($sessionId);
-
-                if (! $session instanceof Session) {
-                    continue;
-                }
-
-                if ($this->isValid($session)) {
-                    continue;
-                }
-
-                $this->delete($session);
-            }
-        } while ($cursor !== '0');
-    }
+    /**
+     * Expired sessions are removed by Redis itself, as {@see self::save()} writes every session
+     * with a time-to-live equal to the configured expiration. There is nothing left to collect,
+     * so this is a no-op.
+     *
+     * As a consequence, {@see SessionDeleted} is only dispatched when a session is explicitly
+     * deleted, never when it expires.
+     */
+    public function deleteExpiredSessions(): void {}
 
     private function load(SessionId $id): ?Session
     {
@@ -108,10 +92,5 @@ final readonly class RedisSessionManager implements SessionManager
     private function getKey(SessionId $id): string
     {
         return sprintf('%s%s', $this->config->prefix, $id);
-    }
-
-    private function getSessionIdFromKey(string $key): SessionId
-    {
-        return new SessionId(Str\after_first($key, $this->config->prefix));
     }
 }
