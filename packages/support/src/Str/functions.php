@@ -211,23 +211,23 @@ function after_first(Stringable|string $string, Stringable|string|array $search)
         return $string;
     }
 
-    $nearestPosition = mb_strlen($string); // Initialize with a large value
+    $nearestPosition = false;
     $foundSearch = '';
 
     foreach (Arr\wrap($search) as $term) {
-        $position = mb_strpos($string, $term);
+        $position = strpos($string, (string) $term);
 
-        if ($position !== false && $position < $nearestPosition) {
+        if ($position !== false && ($nearestPosition === false || $position < $nearestPosition)) {
             $nearestPosition = $position;
-            $foundSearch = $term;
+            $foundSearch = (string) $term;
         }
     }
 
-    if ($nearestPosition === mb_strlen($string)) {
+    if ($nearestPosition === false) {
         return $string;
     }
 
-    return mb_substr($string, $nearestPosition + mb_strlen($foundSearch));
+    return substr($string, $nearestPosition + strlen($foundSearch));
 }
 
 /**
@@ -246,11 +246,11 @@ function after_last(Stringable|string $string, Stringable|string|array $search):
     $foundSearch = null;
 
     foreach (Arr\wrap($search) as $term) {
-        $position = mb_strrpos($string, $term);
+        $position = strrpos($string, (string) $term);
 
         if ($position !== false && $position > $farthestPosition) {
             $farthestPosition = $position;
-            $foundSearch = $term;
+            $foundSearch = (string) $term;
         }
     }
 
@@ -258,7 +258,7 @@ function after_last(Stringable|string $string, Stringable|string|array $search):
         return $string;
     }
 
-    return mb_substr($string, $farthestPosition + mb_strlen($foundSearch));
+    return substr($string, $farthestPosition + strlen($foundSearch));
 }
 
 /**
@@ -273,21 +273,21 @@ function before_first(Stringable|string $string, Stringable|string|array $search
         return $string;
     }
 
-    $nearestPosition = mb_strlen($string);
+    $nearestPosition = false;
 
     foreach (Arr\wrap($search) as $char) {
-        $position = mb_strpos($string, $char);
+        $position = strpos($string, (string) $char);
 
-        if ($position !== false && $position < $nearestPosition) {
+        if ($position !== false && ($nearestPosition === false || $position < $nearestPosition)) {
             $nearestPosition = $position;
         }
     }
 
-    if ($nearestPosition === mb_strlen($string)) {
+    if ($nearestPosition === false) {
         return $string;
     }
 
-    return mb_substr($string, start: 0, length: $nearestPosition);
+    return substr($string, offset: 0, length: $nearestPosition);
 }
 
 /**
@@ -305,7 +305,7 @@ function before_last(Stringable|string $string, Stringable|string|array $search)
     $farthestPosition = -1;
 
     foreach (Arr\wrap($search) as $char) {
-        $position = mb_strrpos($string, $char);
+        $position = strrpos($string, (string) $char);
 
         if ($position !== false && $position > $farthestPosition) {
             $farthestPosition = $position;
@@ -316,7 +316,7 @@ function before_last(Stringable|string $string, Stringable|string|array $search)
         return $string;
     }
 
-    return mb_substr($string, start: 0, length: $farthestPosition);
+    return substr($string, offset: 0, length: $farthestPosition);
 }
 
 /**
@@ -346,7 +346,13 @@ function starts_with(Stringable|string $string, Stringable|string|array $needles
         $needles = [$needles];
     }
 
-    return array_any($needles, fn ($needle) => str_starts_with($string, (string) $needle));
+    foreach ($needles as $needle) {
+        if (str_starts_with($string, (string) $needle)) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
