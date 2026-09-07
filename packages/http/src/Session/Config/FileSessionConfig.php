@@ -14,11 +14,13 @@ final class FileSessionConfig implements SessionConfig
      * @param string $path Path to the sessions storage directory, relative to the internal storage.
      * @param Duration $expiration Time required for a session to expire.
      * @param CleanupStrategy $cleanupStrategy Strategy for cleaning up expired sessions. Defaults to `RANDOM_REQUESTS`, which provides a good balance between performance and cleanup frequency.
+     * @param null|Duration $absoluteExpiration Maximum lifetime of a session, counted from its creation and regardless of activity. When `null`, an active session never expires.
      */
     public function __construct(
         public Duration $expiration,
         private(set) CleanupStrategy $cleanupStrategy = CleanupStrategy::RANDOM_REQUESTS,
         public string $path = 'sessions',
+        private(set) ?Duration $absoluteExpiration = null,
     ) {}
 
     public function createManager(Container $container): FileSessionManager

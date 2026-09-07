@@ -178,6 +178,51 @@ final class FileSessionTest extends FrameworkIntegrationTestCase
     }
 
     #[Test]
+    public function is_valid_checks_absolute_expiration(): void
+    {
+        $clock = $this->clock('2025-01-01 00:00:00');
+
+        $this->container->config(new FileSessionConfig(
+            expiration: Duration::minutes(30),
+            path: 'test_sessions',
+            absoluteExpiration: Duration::hours(1),
+        ));
+
+        $session = $this->manager->getOrCreate(new SessionId('absolute_expiration_test'));
+        $this->manager->save($session);
+
+        // The session stays active, so it never expires through inactivity.
+        foreach (range(1, 3) as $ignored) {
+            $clock->plus(Duration::minutes(20));
+            $this->manager->save($session);
+        }
+
+        $this->assertFalse($this->manager->isValid($session));
+    }
+
+    #[Test]
+    public function get_or_create_discards_an_expired_session(): void
+    {
+        $clock = $this->clock('2025-01-01 00:00:00');
+
+        $this->container->config(new FileSessionConfig(
+            expiration: Duration::minutes(30),
+            path: 'test_sessions',
+        ));
+
+        $session = $this->manager->getOrCreate(new SessionId('discarded'));
+        $session->set('key', 'value');
+        $this->manager->save($session);
+
+        $clock->plus(Duration::minutes(35));
+
+        $session = $this->manager->getOrCreate(new SessionId('discarded'));
+
+        $this->assertNull($session->get('key'));
+        $this->assertTrue($session->createdAt->equals($clock->now()));
+    }
+
+    #[Test]
     public function delete_expired_sessions_removes_old_files(): void
     {
         $this->eventBus->preventEventHandling();

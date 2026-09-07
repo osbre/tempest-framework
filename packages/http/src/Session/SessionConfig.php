@@ -13,6 +13,12 @@ interface SessionConfig
     public Duration $expiration { get; }
 
     /**
+     * Maximum lifetime of a session, counted from its creation and regardless of activity.
+     * When `null`, an active session never expires.
+     */
+    public ?Duration $absoluteExpiration { get; }
+
+    /**
      * Defines the strategy used to clean up expired sessions. The default strategy is `RANDOM_REQUESTS`, which provides a good balance between performance and cleanup frequency.
      */
     public CleanupStrategy $cleanupStrategy { get; }

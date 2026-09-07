@@ -29,6 +29,14 @@ final readonly class FileSessionManager implements SessionManager
         $now = $this->clock->now();
         $session = $this->load($id);
 
+        // Expired sessions are not resurrected. Cleanup is lazy, and may be disabled
+        // entirely, so expiration is enforced when the session is loaded.
+        if ($session instanceof Session && ! $this->isValid($session)) {
+            $this->delete($session);
+
+            $session = null;
+        }
+
         if (! $session instanceof Session) {
             $session = new Session(
                 id: $id,
@@ -64,8 +72,10 @@ final readonly class FileSessionManager implements SessionManager
 
     public function isValid(Session $session): bool
     {
-        return $this->clock->now()->before(
-            other: $session->lastActiveAt->plus($this->sessionConfig->expiration),
+        return ! $session->hasExpired(
+            now: $this->clock->now(),
+            expiration: $this->sessionConfig->expiration,
+            absoluteExpiration: $this->sessionConfig->absoluteExpiration,
         );
     }
 

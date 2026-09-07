@@ -6,6 +6,7 @@ namespace Tempest\Http\Session;
 
 use Tempest\DateTime\DateTime;
 use Tempest\DateTime\DateTimeInterface;
+use Tempest\DateTime\Duration;
 use Tempest\Support\Str;
 use UnitEnum;
 
@@ -130,6 +131,24 @@ final class Session
 
             $this->expiredKeys[$key] = $key;
         }
+    }
+
+    /**
+     * Determines whether the session has expired, either because it has been idle for
+     * longer than `$expiration`, or because it was created more than `$absoluteExpiration`
+     * ago, regardless of activity.
+     */
+    public function hasExpired(DateTimeInterface $now, Duration $expiration, ?Duration $absoluteExpiration = null): bool
+    {
+        if ($now->afterOrAtTheSameTime($this->lastActiveAt->plus($expiration))) {
+            return true;
+        }
+
+        if ($absoluteExpiration === null) {
+            return false;
+        }
+
+        return $now->afterOrAtTheSameTime($this->createdAt->plus($absoluteExpiration));
     }
 
     /**

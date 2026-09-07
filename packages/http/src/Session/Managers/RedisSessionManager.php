@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tempest\Http\Session\Managers;
 
 use Tempest\Clock\Clock;
+use Tempest\DateTime\Duration;
 use Tempest\Http\Session\Config\RedisSessionConfig;
 use Tempest\Http\Session\Session;
 use Tempest\Http\Session\SessionCreated;
@@ -30,6 +31,14 @@ final readonly class RedisSessionManager implements SessionManager
         $now = $this->clock->now();
         $session = $this->load($id);
 
+        // Expired sessions are not resurrected. Cleanup is lazy, and may be disabled
+        // entirely, so expiration is enforced when the session is loaded.
+        if ($session instanceof Session && ! $this->isValid($session)) {
+            $this->delete($session);
+
+            $session = null;
+        }
+
         if (! $session instanceof Session) {
             $session = new Session(
                 id: $id,
@@ -50,7 +59,7 @@ final readonly class RedisSessionManager implements SessionManager
         $this->redis->set(
             key: $this->getKey($session->id),
             value: serialize($session),
-            expiration: $this->config->expiration,
+            expiration: $this->resolveExpiration($session),
         );
     }
 
@@ -63,8 +72,10 @@ final readonly class RedisSessionManager implements SessionManager
 
     public function isValid(Session $session): bool
     {
-        return $this->clock->now()->before(
-            other: $session->lastActiveAt->plus($this->config->expiration),
+        return ! $session->hasExpired(
+            now: $this->clock->now(),
+            expiration: $this->config->expiration,
+            absoluteExpiration: $this->config->absoluteExpiration,
         );
     }
 
@@ -91,6 +102,28 @@ final readonly class RedisSessionManager implements SessionManager
                 $this->delete($session);
             }
         } while ($cursor !== '0');
+    }
+
+    /**
+     * Resolves the time-to-live of the session key, which may never outlive the absolute
+     * expiration - otherwise an active session would keep pushing its own deadline back.
+     */
+    private function resolveExpiration(Session $session): Duration
+    {
+        if ($this->config->absoluteExpiration === null) {
+            return $this->config->expiration;
+        }
+
+        $remaining = $session
+            ->createdAt
+            ->plus($this->config->absoluteExpiration)
+            ->since($this->clock->now());
+
+        if ($remaining->getTotalSeconds() < $this->config->expiration->getTotalSeconds()) {
+            return $remaining;
+        }
+
+        return $this->config->expiration;
     }
 
     private function load(SessionId $id): ?Session

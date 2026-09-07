@@ -28,6 +28,14 @@ final readonly class DatabaseSessionManager implements SessionManager
         $now = $this->clock->now();
         $session = $this->load($id);
 
+        // Expired sessions are not resurrected. Cleanup is lazy, and may be disabled
+        // entirely, so expiration is enforced when the session is loaded.
+        if ($session instanceof Session && ! $this->isValid($session)) {
+            $this->delete($session);
+
+            $session = null;
+        }
+
         if (! $session instanceof Session) {
             $session = new Session(
                 id: $id,
@@ -84,8 +92,10 @@ final readonly class DatabaseSessionManager implements SessionManager
 
     public function isValid(Session $session): bool
     {
-        return $this->clock->now()->before(
-            other: $session->lastActiveAt->plus($this->config->expiration),
+        return ! $session->hasExpired(
+            now: $this->clock->now(),
+            expiration: $this->config->expiration,
+            absoluteExpiration: $this->config->absoluteExpiration,
         );
     }
 
@@ -95,10 +105,18 @@ final readonly class DatabaseSessionManager implements SessionManager
             ->now()
             ->minus($this->config->expiration);
 
-        $expiredSessions = query(DatabaseSession::class)
+        $query = query(DatabaseSession::class)
             ->select()
-            ->where('last_active_at < ?', $expired->format(FormatPattern::SQL_DATE_TIME))
-            ->all();
+            ->where('last_active_at < ?', $expired->format(FormatPattern::SQL_DATE_TIME));
+
+        if ($this->config->absoluteExpiration !== null) {
+            $query = $query->orWhere(
+                'created_at < ?',
+                $this->clock->now()->minus($this->config->absoluteExpiration)->format(FormatPattern::SQL_DATE_TIME),
+            );
+        }
+
+        $expiredSessions = $query->all();
 
         foreach ($expiredSessions as $expiredSession) {
             query(DatabaseSession::class)

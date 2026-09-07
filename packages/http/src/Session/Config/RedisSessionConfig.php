@@ -15,11 +15,13 @@ final class RedisSessionConfig implements SessionConfig
     /**
      * @param Duration $expiration Time required for a session to expire.
      * @param CleanupStrategy $cleanupStrategy Strategy for cleaning up expired sessions. Defaults to `DISABLED`, because sessions expire automatically in Redis.
+     * @param null|Duration $absoluteExpiration Maximum lifetime of a session, counted from its creation and regardless of activity. When `null`, an active session never expires.
      */
     public function __construct(
         private(set) Duration $expiration,
         private(set) CleanupStrategy $cleanupStrategy = CleanupStrategy::DISABLED,
         readonly string $prefix = 'session:',
+        private(set) ?Duration $absoluteExpiration = null,
     ) {}
 
     public function createManager(Container $container): RedisSessionManager
