@@ -30,6 +30,19 @@ if (class_exists(ConsoleCommand::class)) {
             try {
                 if ($uuid) {
                     $command = $this->repository->findPendingCommand($uuid);
+                } elseif ($this->repository instanceof ClaimsPendingCommands) {
+                    // Reserving rather than reading keeps a manual run from picking up a command a
+                    // monitor is already handling.
+                    $claimed = $this->repository->claimPendingCommands(limit: 1)[0] ?? null;
+
+                    if ($claimed === null) {
+                        $this->error('No pending command found.');
+
+                        return ExitCode::ERROR;
+                    }
+
+                    $uuid = $claimed->uuid;
+                    $command = $claimed->command;
                 } else {
                     $pendingCommands = arr($this->repository->getPendingCommands());
 
@@ -58,6 +71,10 @@ if (class_exists(ConsoleCommand::class)) {
                 $commandHandler = $this->commandBusConfig->handlers[$command::class] ?? null;
 
                 if (! $commandHandler) {
+                    // Permanent: no amount of retrying grows a handler. Failing it releases the
+                    // reservation too, so the command is not claimed again on every poll.
+                    $this->repository->markAsFailed($uuid);
+
                     $commandClass = $command::class;
                     $this->error("No handler found for command {$commandClass}.");
 
@@ -78,7 +95,12 @@ if (class_exists(ConsoleCommand::class)) {
 
                 return ExitCode::SUCCESS;
             } catch (Throwable $throwable) {
-                $this->repository->markAsFailed($uuid);
+                // The uuid is still unknown when the failure happened while looking for a command
+                // to run, in which case there is no reservation to clear either.
+                if ($uuid !== null) {
+                    $this->repository->markAsFailed($uuid);
+                }
+
                 $this->error($throwable->getMessage());
 
                 return ExitCode::ERROR;

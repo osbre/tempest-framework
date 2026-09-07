@@ -43,6 +43,7 @@ final class CommandRepositoryInstallerTest extends FrameworkIntegrationTestCase
 
         $this->installer
             ->assertFileExists('App/CommandBus/CreateCommandsTable.php')
+            ->assertFileExists('App/CommandBus/AddReservationsToCommandsTable.php')
             ->assertFileExists('App/CommandBus/command-bus.config.php');
 
         $this->installer->assertFileContains('App/CommandBus/command-bus.config.php', 'CommandBusConfig');

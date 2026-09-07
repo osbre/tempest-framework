@@ -32,13 +32,22 @@ final class CommandRepositoryInstaller
             return;
         }
 
-        $migration = match ($storage) {
-            CommandBusStorage::DATABASE => $this->publish(
+        $migration = null;
+
+        if ($storage === CommandBusStorage::DATABASE) {
+            $migration = $this->publish(
                 source: __DIR__ . '/CreateCommandsTable.php',
                 destination: src_path('CommandBus/CreateCommandsTable.php'),
-            ),
-            default => null,
-        };
+            );
+
+            // Not confirmed separately: the repository does not work without these columns, so
+            // there is nothing useful to install without it.
+            $this->publish(
+                source: __DIR__ . '/AddReservationsToCommandsTable.php',
+                destination: src_path('CommandBus/AddReservationsToCommandsTable.php'),
+                confirm: false,
+            );
+        }
 
         $this->publish(
             source: match ($storage) {
