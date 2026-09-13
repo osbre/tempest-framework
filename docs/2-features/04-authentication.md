@@ -94,40 +94,34 @@ final readonly class AuthenticationController
 
 Tempest automatically regenerates the session identifier when a model is authenticated or deauthenticated. Authentication keeps the existing session data, while deauthentication clears it before creating the new session. In both cases, the previous session is destroyed.
 
-You should also regenerate the session identifier whenever an authenticated session changes privilege level, such as after a password change, enabling two-factor authentication, impersonating another user, or escalating a user's role. Inject {b`Tempest\Http\Session\SessionRegenerator`} for these transitions:
+You should also regenerate the session identifier whenever an authenticated session changes privilege level, such as after a password change, enabling two-factor authentication, impersonating another user, or escalating a user's role. Use the `regenerate()` method on {b`Tempest\Http\Session\SessionManager`} for these transitions:
 
 ```php app/Authentication/TwoFactorController.php
 use Tempest\Http\Session\Session;
 use Tempest\Http\Session\SessionManager;
-use Tempest\Http\Session\SessionRegenerator;
 
 final readonly class TwoFactorController
 {
     public function __construct(
         private Session $session,
         private SessionManager $sessionManager,
-        private SessionRegenerator $sessionRegenerator,
     ) {}
 
     public function enable(): void
     {
         // Enable two-factor authentication for the current user...
 
-        $this->sessionRegenerator->regenerate();
-        $this->sessionManager->save($this->session);
+        $this->sessionManager->regenerate($this->session);
     }
 }
 ```
 
-`regenerate()` destroys the old session, assigns a new identifier, and carries the session data over. If the data must not survive the transition, clear the session before regenerating it:
+`regenerate()` destroys the old session, assigns a new identifier, carries the session data over and saves it. If the data must not survive the transition, clear the session before regenerating it:
 
 ```php
 $this->session->clear();
-$this->sessionRegenerator->regenerate();
-$this->sessionManager->save($this->session);
+$this->sessionManager->regenerate($this->session);
 ```
-
-The new session must be saved after regeneration. The authenticator handles this automatically for normal authentication and deauthentication flows.
 
 ### Accessing the authenticated model
 

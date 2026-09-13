@@ -14,7 +14,7 @@ interface SessionIdResolver
     /**
      * Creates a new identifier and sends it to the client, replacing the one it was using.
      *
-     * @see SessionRegenerator
+     * @see SessionManager::regenerate()
      */
     public function issueNewId(): SessionId;
 }

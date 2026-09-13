@@ -15,7 +15,6 @@ use Tempest\Http\Session\Session;
 use Tempest\Http\Session\SessionId;
 use Tempest\Http\Session\SessionIdResolver;
 use Tempest\Http\Session\SessionManager;
-use Tempest\Http\Session\SessionRegenerator;
 
 final class SessionAuthenticatorTest extends TestCase
 {
@@ -32,7 +31,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: new TestingSessionManager(),
             session: $session,
             authenticatableResolver: $resolver,
-            sessionRegenerator: $this->createRegenerator($session),
         );
 
         $this->assertSame($authenticatable, $authenticator->current());
@@ -52,7 +50,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: new TestingSessionManager(),
             session: $session,
             authenticatableResolver: $resolver,
-            sessionRegenerator: $this->createRegenerator($session),
         );
 
         $this->assertNull($authenticator->current());
@@ -75,7 +72,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: new TestingSessionManager(),
             session: $session,
             authenticatableResolver: $resolver,
-            sessionRegenerator: $this->createRegenerator($session),
         );
 
         $current = $authenticator->current();
@@ -103,7 +99,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: new TestingSessionManager(),
             session: $session,
             authenticatableResolver: $resolver,
-            sessionRegenerator: $this->createRegenerator($session),
         );
 
         $this->assertSame($authenticatable, $authenticator->current());
@@ -129,7 +124,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: new TestingSessionManager(),
             session: $session,
             authenticatableResolver: $resolver,
-            sessionRegenerator: $this->createRegenerator($session),
         );
 
         $current = $authenticator->current();
@@ -153,7 +147,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: $sessionManager,
             session: $session,
             authenticatableResolver: new CountingAuthenticatableResolver(),
-            sessionRegenerator: $this->createRegenerator($session, $sessionManager),
         );
 
         $authenticator->authenticate(new MemoizedAuthenticatable(id: 1));
@@ -177,7 +170,6 @@ final class SessionAuthenticatorTest extends TestCase
             sessionManager: $sessionManager,
             session: $session,
             authenticatableResolver: new CountingAuthenticatableResolver(),
-            sessionRegenerator: $this->createRegenerator($session, $sessionManager),
         );
 
         $authenticator->deauthenticate();
@@ -188,15 +180,6 @@ final class SessionAuthenticatorTest extends TestCase
         $this->assertNull($session->get(SessionAuthenticator::AUTHENTICATABLE_KEY));
         $this->assertNull($session->get(SessionAuthenticator::AUTHENTICATABLE_CLASS));
         $this->assertNull($session->get('key'));
-    }
-
-    private function createRegenerator(Session $session, ?SessionManager $sessionManager = null): SessionRegenerator
-    {
-        return new SessionRegenerator(
-            sessionManager: $sessionManager ?? new TestingSessionManager(),
-            session: $session,
-            sessionIdResolver: new TestingSessionIdResolver(),
-        );
     }
 
     private function createSession(): Session
@@ -268,6 +251,13 @@ final class TestingSessionManager implements SessionManager
 
     public int $deletedSessions = 0;
 
+    private SessionIdResolver $sessionIdResolver;
+
+    public function __construct()
+    {
+        $this->sessionIdResolver = new TestingSessionIdResolver();
+    }
+
     public function getOrCreate(SessionId $id): Session
     {
         $now = DateTime::now();
@@ -283,6 +273,15 @@ final class TestingSessionManager implements SessionManager
     public function delete(Session $session): void
     {
         $this->deletedSessions++;
+    }
+
+    public function regenerate(Session $session): void
+    {
+        $this->delete($session);
+
+        $session->replaceId($this->sessionIdResolver->issueNewId());
+
+        $this->save($session);
     }
 
     public function isValid(Session $session): bool
