@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tempest\Database\Config;
 
+use Tempest\Database\Exceptions\IdentifierWasInvalid;
 use Tempest\Database\Exceptions\QueryWasInvalid;
 
 enum DatabaseDialect: string
@@ -23,6 +24,10 @@ enum DatabaseDialect: string
 
     public function quoteIdentifier(string $identifier): string
     {
+        if (str_contains($identifier, "\0")) {
+            throw new IdentifierWasInvalid($identifier);
+        }
+
         return match ($this) {
             self::MYSQL, self::SQLITE => sprintf('`%s`', str_replace('`', '``', $identifier)),
             self::POSTGRESQL => sprintf('"%s"', str_replace('"', '""', $identifier)),

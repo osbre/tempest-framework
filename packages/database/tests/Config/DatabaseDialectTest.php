@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use Tempest\Database\Config\DatabaseDialect;
+use Tempest\Database\Exceptions\IdentifierWasInvalid;
 
 /**
  * @internal
@@ -24,5 +25,16 @@ final class DatabaseDialectTest extends TestCase
     public function quote_identifier(DatabaseDialect $dialect, string $identifier, string $expected): void
     {
         $this->assertSame($expected, $dialect->quoteIdentifier($identifier));
+    }
+
+    #[TestWith([DatabaseDialect::MYSQL])]
+    #[TestWith([DatabaseDialect::SQLITE])]
+    #[TestWith([DatabaseDialect::POSTGRESQL])]
+    #[Test]
+    public function quote_identifier_rejects_null_bytes(DatabaseDialect $dialect): void
+    {
+        $this->expectException(IdentifierWasInvalid::class);
+
+        $dialect->quoteIdentifier("ti\0tle");
     }
 }
