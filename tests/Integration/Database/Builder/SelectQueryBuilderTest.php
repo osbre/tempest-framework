@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Tempest\Integration\Database\Builder;
 
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\Attributes\TestWith;
 use Tempest\Database\BelongsToMany;
 use Tempest\Database\Builder\QueryBuilders\SelectQueryBuilder;
 use Tempest\Database\Direction;
+use Tempest\Database\Exceptions\OrderByStatementWasInvalid;
 use Tempest\Database\IsDatabaseModel;
 use Tempest\Database\Migrations\CreateMigrationsTable;
 use Tempest\Database\QueryExecuted;
@@ -233,7 +235,7 @@ final class SelectQueryBuilderTest extends FrameworkIntegrationTestCase
     }
 
     #[Test]
-    public function order_by_raw_shorthand(): void
+    public function order_by_raw(): void
     {
         $this->database->migrate(
             CreateMigrationsTable::class,
@@ -247,7 +249,7 @@ final class SelectQueryBuilderTest extends FrameworkIntegrationTestCase
         Book::new(title: 'C')->save();
         Book::new(title: 'D')->save();
 
-        $book = Book::select()->orderBy('title DESC')->first();
+        $book = Book::select()->orderByRaw('title DESC')->first();
         $this->assertSame('D', $book->title);
     }
 
@@ -268,6 +270,26 @@ final class SelectQueryBuilderTest extends FrameworkIntegrationTestCase
             expected: 'SELECT * FROM `books` ORDER BY title DESC NULLS LAST',
             actual: query('books')->select()->orderByRaw('title DESC NULLS LAST')->compile(),
         );
+    }
+
+    #[Test]
+    #[TestWith(['authors.name', 'SELECT * FROM `books` ORDER BY `authors`.`name` ASC'])]
+    #[TestWith(['id`,(SELECT(1))--', 'SELECT * FROM `books` ORDER BY `id``,(SELECT(1))--` ASC'])]
+    #[TestWith(['authors.name`,(SELECT(1))--', 'SELECT * FROM `books` ORDER BY `authors`.`name``,(SELECT(1))--` ASC'])]
+    public function order_by_quotes_field_names(string $field, string $expected): void
+    {
+        $this->assertSame(
+            expected: $expected,
+            actual: (string) query('books')->select()->orderBy($field)->compile(),
+        );
+    }
+
+    #[Test]
+    public function order_by_rejects_raw_sql(): void
+    {
+        $this->expectException(OrderByStatementWasInvalid::class);
+
+        query('books')->select()->orderBy('title DESC')->compile();
     }
 
     #[Test]

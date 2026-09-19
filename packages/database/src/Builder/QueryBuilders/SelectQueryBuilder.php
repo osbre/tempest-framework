@@ -11,6 +11,7 @@ use Tempest\Database\Database;
 use Tempest\Database\DatabaseContext;
 use Tempest\Database\Direction;
 use Tempest\Database\Exceptions\ModelDidNotHavePrimaryColumn;
+use Tempest\Database\Exceptions\OrderByStatementWasInvalid;
 use Tempest\Database\Mappers\SelectModelMapper;
 use Tempest\Database\OnDatabase;
 use Tempest\Database\PrimaryKey;
@@ -249,12 +250,14 @@ final class SelectQueryBuilder implements BuildsQuery, SupportsWhereStatements, 
     /**
      * Orders the results of the query by the given field name and direction.
      *
+     * The field may be qualified, such as `books.title`. For raw SQL, use {@see self::orderByRaw()}.
+     *
      * @return self<TModel>
      */
     public function orderBy(string $field, Direction $direction = Direction::ASC): self
     {
         if (str_contains($field, ' ')) {
-            return $this->orderByRaw($field);
+            throw new OrderByStatementWasInvalid($field);
         }
 
         $this->select->orderBy[] = new OrderByStatement(field: $field, direction: $direction);
